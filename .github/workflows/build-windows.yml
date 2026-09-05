@@ -1,0 +1,66 @@
+name: Build Windows x64
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch NVIDIA DLSS SDK
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force external | Out-Null
+          git clone --depth 1 https://github.com/NVIDIA/DLSS.git external/DLSS
+
+      - name: Fetch ONNX Runtime
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            https://github.com/microsoft/onnxruntime/releases/download/v1.29.0/onnxruntime-win-x64-1.29.0.zip `
+            -OutFile ort.zip
+
+          Expand-Archive ort.zip -DestinationPath ort
+
+          New-Item -ItemType Directory -Force external | Out-Null
+          Move-Item `
+            ort/onnxruntime-win-x64-1.29.0 `
+            external/onnxruntime
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake `
+            -S . `
+            -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+
+          Copy-Item `
+            build/Release/DLSSCamDemo.exe `
+            artifact/
+
+          Copy-Item `
+            build/Release/onnxruntime.dll `
+            artifact/
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: DLSSCamDemo-win64
+          path: artifact/
+          if-no-files-found: error
